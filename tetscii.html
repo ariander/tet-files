@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TetSCII</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #111; }
+    /* AsciiEffect produserer et DOM-element (pre/div) i monospace */
+    #ascii { line-height: 8px; letter-spacing: 0; }
+    .hud {
+      position: fixed; top: 12px; left: 12px; z-index: 10;
+      background: rgba(255,255,255,.9); padding: 8px 10px; border-radius: 10px;
+      font: 14px system-ui; box-shadow: 0 2px 14px rgba(0,0,0,.15);
+    }
+    .hud label { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <label>Bakgrunn:
+      <select id="bg">
+        <option value="#170132">Mørk Lilla</option>
+        <option value="#A07CF6">Lilla</option>
+        <option value="#D4C7FF">Lys Lilla</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="invert" checked /> Inverter</label>
+    <label><input type="checkbox" id="color" /> Farger</label>
+    <label>Oppløsning: <input type="range" id="res" min="6" max="16" value="10" /></label>
+  </div>
+
+  <div id="ascii"></div>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.159.0/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js';
+    import { AsciiEffect } from 'https://unpkg.com/three@0.159.0/examples/jsm/effects/AsciiEffect.js';
+
+    // Renderer (vi rendrer "usynlig" til AsciiEffect)
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, 2, 0.1, 1000);
+    camera.position.set(2.5, 1.8, 3.2);
+
+    // Lys – nok til at ASCII-konverteringen får kontrast
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x333366, 1.0);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(5, 10, 4);
+    scene.add(dir);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // ASCII-effekt
+    let invert = true, useColor = false, charRes = 10;
+    const chars = ' #'; // kan byttes for annen "look"
+    let effect = new AsciiEffect(renderer, chars, { invert, color: useColor, resolution: charRes });
+    effect.domElement.id = 'ascii';
+    document.getElementById('ascii').appendChild(effect.domElement);
+
+    // Last modellen (bytt filnavn hvis nødvendig)
+    const loader = new GLTFLoader();
+    loader.load('./tet-nettverk.glb', (gltf) => {
+      const obj = gltf.scene;
+      obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }});
+      scene.add(obj);
+
+      // Sentrer og skaler til kamera
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      obj.position.sub(center);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fitDist = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      camera.position.set(0, maxDim * 0.2, fitDist * 1.4);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    });
+
+    // UI-hendelser
+    const bgSel = document.getElementById('bg');
+    const invertChk = document.getElementById('invert');
+    const colorChk = document.getElementById('color');
+    const resRange = document.getElementById('res');
+
+    function rebuildEffect() {
+      // Bygg ny effekt med gjeldende opsjoner
+      const parent = effect.domElement.parentElement;
+      parent.removeChild(effect.domElement);
+      effect = new AsciiEffect(renderer, chars, {
+        invert,
+        color: useColor,
+        resolution: Number(charRes) // høyere tall = grovere “pixler”
+      });
+      effect.domElement.id = 'ascii';
+      parent.appendChild(effect.domElement);
+      onResize();
+      document.body.style.background = bgSel.value;
+    }
+
+    bgSel.addEventListener('change', () => { document.body.style.background = bgSel.value; });
+    invertChk.addEventListener('change', () => { invert = invertChk.checked; rebuildEffect(); });
+    colorChk.addEventListener('change', () => { useColor = colorChk.checked; rebuildEffect(); });
+    resRange.addEventListener('input', () => { charRes = resRange.value; rebuildEffect(); });
+
+    // Resize
+    function onResize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      effect.setSize(w, h);
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    // Render-loop
+    (function animate(){
+      requestAnimationFrame(animate);
+      controls.update();
+      effect.render(scene, camera); // erstatter renderer.render(...)
+    })();
+  </script>
+</body>
+</html>
