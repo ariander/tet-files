@@ -66,7 +66,7 @@
 
     // Last modellen (bytt filnavn hvis nødvendig)
     const loader = new GLTFLoader();
-    loader.load('./tet-nettverk.glb', (gltf) => {
+    loader.load('tet-nettverk.glb', (gltf) => {
       const obj = gltf.scene;
       obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }});
       scene.add(obj);
